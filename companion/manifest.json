@@ -1,0 +1,26 @@
+{
+	"id": "sony-bravia-simpleip",
+	"name": "sony-bravia-simpleip",
+	"shortname": "sony-bravia-simpleip",
+	"description": "Sony Bravia Simple IP",
+	"version": "0.0.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/bitfocus/companion-module-sony-bravia-simpleip.git",
+	"bugs": "https://github.com/bitfocus/companion-module-sony-bravia-simpleip/issues",
+	"maintainers": [
+		{
+			"name": "Elliot Matson",
+			"email": "ematson5897@gmail.com"
+		}
+	],
+	"legacyIds": [],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "0.0.0",
+		"entrypoint": "../main.js"
+	},
+	"manufacturer": "Sony",
+	"products": ["Bravia Simple IP"],
+	"keywords": ["Simple IP", "TV", "Television"]
+}
