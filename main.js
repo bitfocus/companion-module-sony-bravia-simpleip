@@ -48,6 +48,10 @@ class BraviaSimpleIPInstance extends InstanceBase {
 		}
 	}
 
+	clamp(num, min, max) {
+		return Math.min(Math.max(num, min), max)
+	}
+
 	// Return config fields for web config
 	getConfigFields() {
 		return [
