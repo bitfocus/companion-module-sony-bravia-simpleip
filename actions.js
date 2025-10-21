@@ -1,3 +1,5 @@
+const { Regex } = require('@companion-module/base')
+
 // all remote code options
 const CHOICES_REMOTE = [
 	{ id: '0000000000000005', label: 'Display' },
@@ -74,7 +76,7 @@ module.exports = function (self) {
 				},
 			],
 			callback: async (action) => {
-				const cmd = unescape(await context.parseVariablesInString(action.options.id_send))
+				const cmd = unescape(action.options.id_send)
 
 				send(cmd)
 			},
@@ -115,19 +117,17 @@ module.exports = function (self) {
 			name: 'Set Volume Level',
 			options: [
 				{
-					type: 'number',
+					type: 'textinput',
 					id: 'volume_level',
 					label: 'Volume Level (0-100)',
-					min: 0,
-					max: 100,
-					default: 10,
+					default: '10',
 					required: true,
+					regex: Regex.NUMBER,
+					useVariables: true,
 				},
 			],
 			callback: async (action) => {
-				let volume = action.options.volume_level
-				if (volume < 0) volume = 0
-				if (volume > 100) volume = 100
+				let volume = this.clamp(parseInt(action.options.volume_level), 0, 100)
 
 				const volumeString = volume.toString().padStart(16, '0')
 				const cmd = `*SCVOLU${volumeString}`
@@ -179,22 +179,18 @@ module.exports = function (self) {
 					],
 				},
 				{
-					type: 'number',
+					type: 'textinput',
 					id: 'input_number',
 					label: 'Input Number (1-9999)',
-					min: 1,
-					max: 9999,
-					default: 1,
+					default: '1',
 					required: true,
+					regex: Regex.NUMBER,
+					useVariables: true,
 				},
 			],
 			callback: async (action) => {
 				let cmd = ''
-				const inputNum = action.options.input_number
-				if (inputNum < 1 || inputNum > 9999) {
-					self.log('error', 'Input number must be between 1 and 9999')
-					return
-				}
+				const inputNum = this.clamp(parseInt(action.options.input_number), 1, 9999)
 				const inputNumString = inputNum.toString().padStart(4, '0')
 				cmd = `*SCINPT${action.options.input_source}${inputNumString}`
 
