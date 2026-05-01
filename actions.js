@@ -127,7 +127,7 @@ module.exports = function (self) {
 				},
 			],
 			callback: async (action) => {
-				let volume = this.clamp(parseInt(action.options.volume_level), 0, 100)
+				let volume = self.clamp(parseInt(action.options.volume_level), 0, 100)
 
 				const volumeString = volume.toString().padStart(16, '0')
 				const cmd = `*SCVOLU${volumeString}`
@@ -190,7 +190,7 @@ module.exports = function (self) {
 			],
 			callback: async (action) => {
 				let cmd = ''
-				const inputNum = this.clamp(parseInt(action.options.input_number), 1, 9999)
+				const inputNum = self.clamp(parseInt(action.options.input_number), 1, 9999)
 				const inputNumString = inputNum.toString().padStart(4, '0')
 				cmd = `*SCINPT${action.options.input_source}${inputNumString}`
 
