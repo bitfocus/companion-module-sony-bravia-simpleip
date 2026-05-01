@@ -1,9 +1,9 @@
 module.exports = function (self) {
-	self.setVariableDefinitions([
-		{ name: 'Power State', variableId: 'power' },
-		{ name: 'Volume Level', variableId: 'volume' },
-		{ name: 'Input Source', variableId: 'input' },
-		{ name: 'Audio Mute State', variableId: 'mute' },
-		{ name: 'Picture Mute State', variableId: 'picture_mute' },
-	])
+	self.setVariableDefinitions({
+		power: { name: 'Power State' },
+		volume: { name: 'Volume Level' },
+		input: { name: 'Input Source' },
+		mute: { name: 'Audio Mute State' },
+		picture_mute: { name: 'Picture Mute State' },
+	})
 }

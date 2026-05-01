@@ -1,4 +1,6 @@
 {
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"type": "connection",
 	"id": "sony-bravia-simpleip",
 	"name": "sony-bravia-simpleip",
 	"shortname": "sony-bravia-simpleip",

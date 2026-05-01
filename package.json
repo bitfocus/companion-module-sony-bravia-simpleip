@@ -12,10 +12,10 @@
 	},
 	"license": "MIT",
 	"dependencies": {
-		"@companion-module/base": "~1.13"
+		"@companion-module/base": "~2.0.0"
 	},
 	"devDependencies": {
-		"@companion-module/tools": "^2.3.0",
+		"@companion-module/tools": "^3.0.0",
 		"prettier": "^3.5.3"
 	},
 	"prettier": "@companion-module/tools/.prettierrc.json",

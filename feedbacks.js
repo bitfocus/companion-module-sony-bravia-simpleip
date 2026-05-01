@@ -125,7 +125,6 @@ module.exports = async function (self) {
 					min: 1,
 					max: 9999,
 					default: 1,
-					required: true,
 				},
 			],
 			defaultStyle: {
