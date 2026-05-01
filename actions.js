@@ -76,9 +76,8 @@ module.exports = function (self) {
 				},
 			],
 			callback: async (action) => {
-				const cmd = unescape(action.options.id_send)
-
-				send(cmd)
+				const cmd = action.options.id_send
+				self.send(cmd)
 			},
 		},
 		set_power_status: {
@@ -117,17 +116,16 @@ module.exports = function (self) {
 			name: 'Set Volume Level',
 			options: [
 				{
-					type: 'textinput',
+					type: 'number',
 					id: 'volume_level',
 					label: 'Volume Level (0-100)',
-					default: '10',
-					required: true,
-					regex: Regex.NUMBER,
-					useVariables: true,
+					default: 10,
+					min: 0,
+					max: 100,
 				},
 			],
 			callback: async (action) => {
-				let volume = self.clamp(parseInt(action.options.volume_level), 0, 100)
+				let volume = action.options.volume_level
 
 				const volumeString = volume.toString().padStart(16, '0')
 				const cmd = `*SCVOLU${volumeString}`
@@ -179,18 +177,17 @@ module.exports = function (self) {
 					],
 				},
 				{
-					type: 'textinput',
+					type: 'number',
 					id: 'input_number',
 					label: 'Input Number (1-9999)',
-					default: '1',
-					required: true,
-					regex: Regex.NUMBER,
-					useVariables: true,
+					default: 1,
+					min: 1,
+					max: 9999,
 				},
 			],
 			callback: async (action) => {
 				let cmd = ''
-				const inputNum = self.clamp(parseInt(action.options.input_number), 1, 9999)
+				const inputNum = action.options.input_number
 				const inputNumString = inputNum.toString().padStart(4, '0')
 				cmd = `*SCINPT${action.options.input_source}${inputNumString}`
 

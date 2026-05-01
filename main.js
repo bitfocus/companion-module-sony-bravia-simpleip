@@ -1,4 +1,4 @@
-const { InstanceBase, Regex, TCPHelper, runEntrypoint, InstanceStatus } = require('@companion-module/base')
+const { InstanceBase, Regex, TCPHelper, InstanceStatus } = require('@companion-module/base')
 const UpdateActions = require('./actions.js')
 const UpdateFeedbacks = require('./feedbacks.js')
 const UpdateVariableDefinitions = require('./variables.js')
@@ -6,7 +6,7 @@ const UpdateVariableDefinitions = require('./variables.js')
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
 
-class BraviaSimpleIPInstance extends InstanceBase {
+module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 	constructor(internal) {
 		super(internal)
 	}
@@ -136,10 +136,12 @@ class BraviaSimpleIPInstance extends InstanceBase {
 						case 'POWR':
 							this.power = parseInt(resParameters)
 							this.setVariableValues({ power: this.power })
+							this.checkFeedbacks('power')
 							break
 						case 'VOLU':
 							this.volume = parseInt(resParameters)
 							this.setVariableValues({ volume: this.volume })
+							this.checkFeedbacks('volume')
 							break
 						case 'INPT':
 							const inputType = parseInt(resParameters.substr(7, 1))
@@ -162,14 +164,17 @@ class BraviaSimpleIPInstance extends InstanceBase {
 							}
 							this.input = inputTypeStr + inputNum
 							this.setVariableValues({ input: this.input })
+							this.checkFeedbacks('input')
 							break
 						case 'AMUT':
 							this.mute = parseInt(resParameters)
 							this.setVariableValues({ mute: this.mute })
+							this.checkFeedbacks('mute')
 							break
 						case 'PMUT':
 							this.picture_mute = parseInt(resParameters)
 							this.setVariableValues({ picture_mute: this.picture_mute })
+							this.checkFeedbacks('picture_mute')
 							break
 						default:
 							this.log('debug', 'No variable mapping for endpoint: ' + resEndpoint)
@@ -177,7 +182,6 @@ class BraviaSimpleIPInstance extends InstanceBase {
 				}
 			}
 		}
-		this.checkFeedbacks()
 	}
 
 	async send(cmd) {
@@ -200,4 +204,4 @@ class BraviaSimpleIPInstance extends InstanceBase {
 	}
 }
 
-runEntrypoint(BraviaSimpleIPInstance, [])
+module.exports.UpgradeScripts = []
