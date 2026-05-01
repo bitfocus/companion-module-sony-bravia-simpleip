@@ -122,7 +122,6 @@ module.exports = function (self) {
 					default: 10,
 					min: 0,
 					max: 100,
-					useVariables: true,
 				},
 			],
 			callback: async (action) => {
@@ -184,7 +183,6 @@ module.exports = function (self) {
 					default: 1,
 					min: 1,
 					max: 9999,
-					useVariables: true,
 				},
 			],
 			callback: async (action) => {
