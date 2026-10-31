@@ -20,6 +20,7 @@ const REFRESH_AFTER = {
 	IRCC: STATE_ENDPOINTS,
 }
 const REFRESH_DELAY_MS = 1000
+const DEFAULT_POLL_INTERVAL_S = 10
 
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
@@ -63,6 +64,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 	async destroy() {
 		this.cancelRefresh()
+		this.stopPolling()
 		if (this.socket) {
 			this.socket.destroy()
 			delete this.socket
@@ -93,6 +95,16 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 				default: 20060,
 				regex: Regex.PORT,
 			},
+			{
+				type: 'number',
+				id: 'poll_interval',
+				label: 'Poll Interval (seconds, 0 to disable)',
+				tooltip: 'How often to re-read the TV state, to catch changes the TV does not report on its own',
+				width: 4,
+				default: DEFAULT_POLL_INTERVAL_S,
+				min: 0,
+				max: 3600,
+			},
 		]
 	}
 
@@ -120,6 +132,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 		this.updateStatus(InstanceStatus.Connecting)
 		this.cancelRefresh()
+		this.stopPolling()
 		this.pendingEnquiries = []
 		this.receiveBuffer = ''
 
@@ -145,6 +158,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			this.socket.on('data', (data) => {
 				this.receive(data)
 			})
+
+			this.startPolling()
 		} else {
 			this.updateStatus(InstanceStatus.BadConfig)
 		}
@@ -156,6 +171,28 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			this.pendingEnquiries.push(endpoint)
 			this.send(`*SE${endpoint}################`)
 		}
+	}
+
+	// periodically re-read the state to catch changes the TV does not notify
+	startPolling() {
+		const configured = parseInt(this.config.poll_interval, 10)
+		const interval = Number.isInteger(configured) ? configured : DEFAULT_POLL_INTERVAL_S
+		if (interval <= 0) return
+
+		this.pollTimer = setInterval(() => {
+			if (!this.socket?.isConnected) return
+			if (this.pendingEnquiries.length > 0) {
+				// the previous round was never fully answered; start over so answers can't be misattributed
+				this.log('debug', 'Unanswered enquiries before poll: ' + this.pendingEnquiries.join(', '))
+				this.pendingEnquiries = []
+			}
+			this.queryState()
+		}, interval * 1000)
+	}
+
+	stopPolling() {
+		clearInterval(this.pollTimer)
+		this.pollTimer = undefined
 	}
 
 	// re-read the given endpoints shortly after a command, batching commands sent close together

@@ -8,8 +8,9 @@ A generic module for controlling Sony Bravia TV's that support the Simple IP con
 
 - **Target Host name or IP**: the TV's address
 - **Target Port**: the Simple IP port, 20060 by default
+- **Poll Interval**: how often, in seconds, to re-read the TV's state (10 by default, 0 to disable)
 
-When the connection comes up, the module reads the TV's power, volume, input, audio mute and picture mute state, then keeps it updated from the TV's change notifications.
+When the connection comes up, the module reads the TV's power, volume, input, audio mute and picture mute state. It keeps it updated from the TV's change notifications, by re-reading the state after each command, and by polling, since the TV does not report every change. In standby the TV does not report volume, input or mute, so those keep their last known values until it is turned on.
 
 ### To use the module
 
