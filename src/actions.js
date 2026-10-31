@@ -122,10 +122,16 @@ module.exports = function (self) {
 					default: 10,
 					min: 0,
 					max: 100,
+					asInteger: true,
+					clampValues: true,
 				},
 			],
 			callback: async (action) => {
-				let volume = action.options.volume_level
+				const volume = self.clamp(Math.round(Number(action.options.volume_level)), 0, 100)
+				if (Number.isNaN(volume)) {
+					self.log('warn', 'Invalid volume level: ' + action.options.volume_level)
+					return
+				}
 
 				const volumeString = volume.toString().padStart(16, '0')
 				const cmd = `*SCVOLU${volumeString}`
@@ -183,11 +189,17 @@ module.exports = function (self) {
 					default: 1,
 					min: 1,
 					max: 9999,
+					asInteger: true,
+					clampValues: true,
 				},
 			],
 			callback: async (action) => {
 				let cmd = ''
-				const inputNum = action.options.input_number
+				const inputNum = self.clamp(Math.round(Number(action.options.input_number)), 1, 9999)
+				if (Number.isNaN(inputNum)) {
+					self.log('warn', 'Invalid input number: ' + action.options.input_number)
+					return
+				}
 				const inputNumString = inputNum.toString().padStart(4, '0')
 				cmd = `*SCINPT${action.options.input_source}${inputNumString}`
 
@@ -229,6 +241,7 @@ module.exports = function (self) {
 					type: 'dropdown',
 					id: 'remote_code',
 					label: 'Button',
+					default: '0000000000000006',
 					choices: CHOICES_REMOTE,
 				},
 			],

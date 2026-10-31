@@ -2,6 +2,10 @@ const { InstanceBase, Regex, TCPHelper, InstanceStatus } = require('@companion-m
 const UpdateActions = require('./actions.js')
 const UpdateFeedbacks = require('./feedbacks.js')
 const UpdateVariableDefinitions = require('./variables.js')
+const UpgradeScripts = require('./upgrades.js')
+
+// endpoints whose state is read back from the TV on connect
+const STATE_ENDPOINTS = ['POWR', 'VOLU', 'INPT', 'AMUT', 'PMUT']
 
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
@@ -15,11 +19,13 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		this.config = config
 		this.updateStatus(InstanceStatus.Connecting)
 
-		this.power = 0
-		this.volume = 0
-		this.input = ''
-		this.mute = 0
-		this.picture_mute = 0
+		// unknown until the TV reports them
+		this.power = undefined
+		this.volume = undefined
+		this.input = undefined
+		this.mute = undefined
+		this.picture_mute = undefined
+		this.pendingEnquiries = []
 
 		await this.configUpdated(config)
 	}
@@ -92,12 +98,20 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 
 		this.updateStatus(InstanceStatus.Connecting)
+		this.pendingEnquiries = []
 
-		if (this.config.host) {
-			this.socket = new TCPHelper(this.config.host, this.config.port)
+		const host = (this.config.host || '').trim()
+		const port = parseInt(this.config.port, 10)
+
+		if (host && Number.isInteger(port) && port >= 1 && port <= 65535) {
+			this.socket = new TCPHelper(host, port)
 
 			this.socket.on('status_change', (status, message) => {
 				this.updateStatus(status, message)
+			})
+
+			this.socket.on('connect', () => {
+				this.queryState()
 			})
 
 			this.socket.on('error', (err) => {
@@ -113,7 +127,15 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 	}
 
-	async receive(data) {
+	// ask the TV for its current state; answers arrive as 'A' messages
+	queryState() {
+		for (const endpoint of STATE_ENDPOINTS) {
+			this.pendingEnquiries.push(endpoint)
+			this.send(`*SE${endpoint}################`)
+		}
+	}
+
+	receive(data) {
 		const commands = data.toString().split('\n')
 		for (let cmd of commands) {
 			if (cmd.length > 0) {
@@ -126,61 +148,78 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 				const resParameters = dataResponse.substr(7, 16)
 				this.log('debug', 'response type: ' + resType + ' endpoint: ' + resEndpoint + ' parameters: ' + resParameters)
 
-				// check for error response
-				if (resType == 'A' && resParameters == 'FFFFFFFFFFFFFFFF') {
-					this.log('error', 'Error response received from TV')
-				} else if (resType == 'A' && resParameters == '0000000000000000') {
-					this.log('info', 'Command processed successfully')
-				} else if (resType == 'N') {
-					switch (resEndpoint) {
-						case 'POWR':
-							this.power = parseInt(resParameters)
-							this.setVariableValues({ power: this.power })
-							this.checkFeedbacks('power')
-							break
-						case 'VOLU':
-							this.volume = parseInt(resParameters)
-							this.setVariableValues({ volume: this.volume })
-							this.checkFeedbacks('volume')
-							break
-						case 'INPT':
-							const inputType = parseInt(resParameters.substr(7, 1))
-							const inputNum = parseInt(resParameters.substr(12, 4))
-							// convert type to string
-							let inputTypeStr = ''
-							switch (inputType) {
-								case 1:
-									inputTypeStr = 'HDMI'
-									break
-								case 3:
-									inputTypeStr = 'Composite'
-									break
-								case 4:
-									inputTypeStr = 'Component'
-									break
-								case 5:
-									inputTypeStr = 'Screen Mirroring'
-									break
-							}
-							this.input = inputTypeStr + inputNum
-							this.setVariableValues({ input: this.input })
-							this.checkFeedbacks('input')
-							break
-						case 'AMUT':
-							this.mute = parseInt(resParameters)
-							this.setVariableValues({ mute: this.mute })
-							this.checkFeedbacks('mute')
-							break
-						case 'PMUT':
-							this.picture_mute = parseInt(resParameters)
-							this.setVariableValues({ picture_mute: this.picture_mute })
-							this.checkFeedbacks('picture_mute')
-							break
-						default:
-							this.log('debug', 'No variable mapping for endpoint: ' + resEndpoint)
+				if (resType == 'A') {
+					// answers come back in order, so the first matching pending enquiry is this one
+					const enquiryIndex = this.pendingEnquiries.indexOf(resEndpoint)
+					const isEnquiryAnswer = enquiryIndex !== -1
+					if (isEnquiryAnswer) {
+						this.pendingEnquiries.splice(enquiryIndex, 1)
 					}
+
+					if (resParameters == 'FFFFFFFFFFFFFFFF') {
+						this.log('error', 'Error response received from TV for ' + resEndpoint)
+					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
+						this.log('debug', 'TV has no value for ' + resEndpoint)
+					} else if (isEnquiryAnswer) {
+						this.updateState(resEndpoint, resParameters)
+					} else if (resParameters == '0000000000000000') {
+						this.log('info', 'Command processed successfully: ' + resEndpoint)
+					}
+				} else if (resType == 'N') {
+					this.updateState(resEndpoint, resParameters)
 				}
 			}
+		}
+	}
+
+	updateState(endpoint, parameters) {
+		switch (endpoint) {
+			case 'POWR':
+				this.power = parseInt(parameters)
+				this.setVariableValues({ power: this.power })
+				this.checkFeedbacks('power')
+				break
+			case 'VOLU':
+				this.volume = parseInt(parameters)
+				this.setVariableValues({ volume: this.volume })
+				this.checkFeedbacks('volume')
+				break
+			case 'INPT': {
+				const inputType = parseInt(parameters.substr(7, 1))
+				const inputNum = parseInt(parameters.substr(12, 4))
+				// convert type to string
+				let inputTypeStr = ''
+				switch (inputType) {
+					case 1:
+						inputTypeStr = 'HDMI'
+						break
+					case 3:
+						inputTypeStr = 'Composite'
+						break
+					case 4:
+						inputTypeStr = 'Component'
+						break
+					case 5:
+						inputTypeStr = 'Screen Mirroring'
+						break
+				}
+				this.input = inputTypeStr + inputNum
+				this.setVariableValues({ input: this.input })
+				this.checkFeedbacks('input')
+				break
+			}
+			case 'AMUT':
+				this.mute = parseInt(parameters)
+				this.setVariableValues({ mute: this.mute })
+				this.checkFeedbacks('mute')
+				break
+			case 'PMUT':
+				this.picture_mute = parseInt(parameters)
+				this.setVariableValues({ picture_mute: this.picture_mute })
+				this.checkFeedbacks('picture_mute')
+				break
+			default:
+				this.log('debug', 'No variable mapping for endpoint: ' + endpoint)
 		}
 	}
 
@@ -204,4 +243,4 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 	}
 }
 
-module.exports.UpgradeScripts = []
+module.exports.UpgradeScripts = UpgradeScripts
