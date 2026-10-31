@@ -1,65 +1,4 @@
-const { Regex } = require('@companion-module/base')
-
-// all remote code options
-const CHOICES_REMOTE = [
-	{ id: '0000000000000005', label: 'Display' },
-	{ id: '0000000000000006', label: 'Home' },
-	{ id: '0000000000000007', label: 'Options' },
-	{ id: '0000000000000008', label: 'Return' },
-	{ id: '0000000000000009', label: 'Up' },
-	{ id: '0000000000000010', label: 'Down' },
-	{ id: '0000000000000011', label: 'Right' },
-	{ id: '0000000000000012', label: 'Left' },
-	{ id: '0000000000000013', label: 'Confirm' },
-	{ id: '0000000000000014', label: 'Red' },
-	{ id: '0000000000000015', label: 'Green' },
-	{ id: '0000000000000016', label: 'Yellow' },
-	{ id: '0000000000000017', label: 'Blue' },
-	{ id: '0000000000000018', label: 'Num 1' },
-	{ id: '0000000000000019', label: 'Num 2' },
-	{ id: '0000000000000020', label: 'Num 3' },
-	{ id: '0000000000000021', label: 'Num 4' },
-	{ id: '0000000000000022', label: 'Num 5' },
-	{ id: '0000000000000023', label: 'Num 6' },
-	{ id: '0000000000000024', label: 'Num 7' },
-	{ id: '0000000000000025', label: 'Num 8' },
-	{ id: '0000000000000026', label: 'Num 9' },
-	{ id: '0000000000000027', label: 'Num 0' },
-	{ id: '0000000000000030', label: 'Volume +' },
-	{ id: '0000000000000031', label: 'Volume -' },
-	{ id: '0000000000000032', label: 'Mute' },
-	{ id: '0000000000000033', label: 'Channel Up' },
-	{ id: '0000000000000034', label: 'Channel Down' },
-	{ id: '0000000000000035', label: 'Subtitle' },
-	{ id: '0000000000000038', label: 'DOT' },
-	{ id: '0000000000000050', label: 'Picture Off' },
-	{ id: '0000000000000061', label: 'Wide' },
-	{ id: '0000000000000062', label: 'Jump' },
-	{ id: '0000000000000076', label: 'Sync Menu' },
-	{ id: '0000000000000077', label: 'Forward' },
-	{ id: '0000000000000078', label: 'Play' },
-	{ id: '0000000000000079', label: 'Rewind' },
-	{ id: '0000000000000080', label: 'Prev' },
-	{ id: '0000000000000081', label: 'Stop' },
-	{ id: '0000000000000082', label: 'Next' },
-	{ id: '0000000000000084', label: 'Pause' },
-	{ id: '0000000000000086', label: 'Flash Plus' },
-	{ id: '0000000000000087', label: 'Flash Minus' },
-	{ id: '0000000000000098', label: 'TV Power' },
-	{ id: '0000000000000099', label: 'Audio' },
-	{ id: '0000000000000101', label: 'Input' },
-	{ id: '0000000000000104', label: 'Sleep' },
-	{ id: '0000000000000105', label: 'Sleep Timer' },
-	{ id: '0000000000000108', label: 'Video 2' },
-	{ id: '0000000000000110', label: 'Picture Mode' },
-	{ id: '0000000000000121', label: 'Demo Surround' },
-	{ id: '0000000000000124', label: 'HDMI 1' },
-	{ id: '0000000000000125', label: 'HDMI 2' },
-	{ id: '0000000000000126', label: 'HDMI 3' },
-	{ id: '0000000000000127', label: 'HDMI 4' },
-	{ id: '0000000000000129', label: 'Action Menu' },
-	{ id: '0000000000000130', label: 'Help' },
-]
+const { REMOTE_KEYS, INPUT_TYPES } = require('./constants.js')
 
 module.exports = function (self) {
 	self.setActionDefinitions({
@@ -150,7 +89,9 @@ module.exports = function (self) {
 					choices: [
 						{ id: 'on', label: 'On' },
 						{ id: 'off', label: 'Off' },
+						{ id: 'toggle', label: 'Toggle' },
 					],
+					disableAutoExpression: true,
 				},
 			],
 			callback: async (action) => {
@@ -161,6 +102,14 @@ module.exports = function (self) {
 						break
 					case 'off':
 						cmd = '*SCAMUT0000000000000000'
+						break
+					case 'toggle':
+						// Simple IP has no mute toggle; fall back to the remote's Mute key while the state is unknown
+						if (self.mute === undefined) {
+							cmd = '*SCIRCC0000000000000032'
+						} else {
+							cmd = self.mute ? '*SCAMUT0000000000000000' : '*SCAMUT0000000000000001'
+						}
 						break
 				}
 
@@ -174,13 +123,9 @@ module.exports = function (self) {
 					type: 'dropdown',
 					id: 'input_source',
 					label: 'Input Source Type',
-					default: '000000010000',
-					choices: [
-						{ id: '000000010000', label: 'HDMI' },
-						{ id: '000000030000', label: 'Composite' },
-						{ id: '000000040000', label: 'Component' },
-						{ id: '000000050000', label: 'Screen Mirroring' },
-					],
+					default: 'HDMI',
+					choices: INPUT_TYPES.map(({ id, label }) => ({ id, label })),
+					expressionDescription: 'One of: ' + INPUT_TYPES.map(({ id }) => id).join(', '),
 				},
 				{
 					type: 'number',
@@ -200,8 +145,13 @@ module.exports = function (self) {
 					self.log('warn', 'Invalid input number: ' + action.options.input_number)
 					return
 				}
+				const inputType = INPUT_TYPES.find((type) => type.id === action.options.input_source)
+				if (!inputType) {
+					self.log('warn', 'Invalid input source: ' + action.options.input_source)
+					return
+				}
 				const inputNumString = inputNum.toString().padStart(4, '0')
-				cmd = `*SCINPT${action.options.input_source}${inputNumString}`
+				cmd = `*SCINPT${inputType.code}${inputNumString}`
 
 				self.send(cmd)
 			},
@@ -217,7 +167,9 @@ module.exports = function (self) {
 					choices: [
 						{ id: 'on', label: 'On' },
 						{ id: 'off', label: 'Off' },
+						{ id: 'toggle', label: 'Toggle' },
 					],
+					disableAutoExpression: true,
 				},
 			],
 			callback: async (action) => {
@@ -228,6 +180,9 @@ module.exports = function (self) {
 						break
 					case 'off':
 						cmd = '*SCPMUT0000000000000000'
+						break
+					case 'toggle':
+						cmd = '*SCTPMU################'
 						break
 				}
 
@@ -241,12 +196,18 @@ module.exports = function (self) {
 					type: 'dropdown',
 					id: 'remote_code',
 					label: 'Button',
-					default: '0000000000000006',
-					choices: CHOICES_REMOTE,
+					default: 'home',
+					choices: REMOTE_KEYS.map(({ id, label }) => ({ id, label })),
+					expressionDescription: 'A key id such as home, up, confirm, volume_up or hdmi1',
 				},
 			],
 			callback: async (action) => {
-				const cmd = `*SCIRCC${action.options.remote_code}`
+				const key = REMOTE_KEYS.find((remoteKey) => remoteKey.id === action.options.remote_code)
+				if (!key) {
+					self.log('warn', 'Invalid remote key: ' + action.options.remote_code)
+					return
+				}
+				const cmd = `*SCIRCC${key.code}`
 				self.send(cmd)
 			},
 		},

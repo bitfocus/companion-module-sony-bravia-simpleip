@@ -50,15 +50,15 @@ body:
           - **Browser**: Chrome 94
           - **Companion Version**: 2.2.0-b177f8fb-3722
           - **Module Version**: 1.0.0
-          - **Device Software Version**: 3.0.6
-          - **Device Model**: My Device PRO
+          - **Device Firmware/Software Version (If applicable)**: 3.0.6
+          - **Device Model (If applicable)**: My Device PRO
       value: |
         - OS:
         - Browser:
         - Companion Version:
         - Module Version:
-        - Device Software Version:
-        - Device Model:
+        - Device Firmware/Software Version (If applicable):
+        - Device Model (If applicable):
       render: markdown
     validations:
       required: false

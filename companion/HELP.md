@@ -6,18 +6,23 @@ A generic module for controlling Sony Bravia TV's that support the Simple IP con
 
 [Follow Sony's instructions to enable Simple IP control on your TV](https://pro-bravia.sony.net/develop/integrate/ssip/overview/index.html)
 
+- **Target Host name or IP**: the TV's address
+- **Target Port**: the Simple IP port, 20060 by default
+
+When the connection comes up, the module reads the TV's power, volume, input, audio mute and picture mute state, then keeps it updated from the TV's change notifications.
+
 ### To use the module
 
-Add an action to a button and choose the action you wish to use.
+Add an action to a button and choose the action you wish to use, or drag a ready-made button from the Presets tab.
 
 **Available Actions:**
 
 - Send Command (Sends any Simple IP command)
 - Set Power Status (On, Off, Toggle)
 - Set Volume Level (0-100)
-- Set Input Source (HDMIXXX, COMPONENTXXX, etc)
-- Set Mute State (On, Off)
-- Set Picture Mute State (On, Off)
+- Set Input Source (HDMI, Composite, Component, Screen Mirroring, plus an input number)
+- Set Mute State (On, Off, Toggle)
+- Set Picture Mute State (On, Off, Toggle)
 - Press Key (Volume Up, Volume Down, Channel Up, Channel Down, etc)
 
 **Available Feedbacks:**
@@ -25,13 +30,26 @@ Add an action to a button and choose the action you wish to use.
 - Power Status
 - Volume Level
 - Input Source
-- Mute State
-- Picture Mute State
+- Mute Status
+- Picture Mute Status
 
 **Available Variables:**
 
-- Power State
-- Volume Level
-- Input Source
-- Audio Mute State
-- Picture Mute State
+| Variable            | Description                | Example                   |
+| ------------------- | -------------------------- | ------------------------- |
+| `power`             | Power state                | `1` (on) or `0` (standby) |
+| `power_text`        | Power state as text        | `On` / `Off`              |
+| `volume`            | Volume level               | `25`                      |
+| `input`             | Input source               | `HDMI2`                   |
+| `mute`              | Audio mute state           | `1` (muted) or `0`        |
+| `mute_text`         | Audio mute state as text   | `Muted` / `Unmuted`       |
+| `picture_mute`      | Picture mute state         | `1` (muted) or `0`        |
+| `picture_mute_text` | Picture mute state as text | `Muted` / `Unmuted`       |
+
+**Available Presets:**
+
+- Power: On, Off, Toggle
+- Audio: Volume Up, Volume Down, Volume Level display, Mute Toggle
+- Inputs: HDMI 1-4
+- Picture: Picture Mute Toggle, On, Off
+- Navigation: arrows, OK, Back, Home, Options, Input, Display

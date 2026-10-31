@@ -2,7 +2,7 @@
 	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
 	"type": "connection",
 	"id": "sony-bravia-simpleip",
-	"name": "sony-bravia-simpleip",
+	"name": "Sony Bravia Simple IP",
 	"shortname": "sony-bravia-simpleip",
 	"description": "Sony Bravia Simple IP",
 	"version": "0.0.0",

@@ -2,6 +2,7 @@ const { InstanceBase, Regex, TCPHelper, InstanceStatus } = require('@companion-m
 const UpdateActions = require('./actions.js')
 const UpdateFeedbacks = require('./feedbacks.js')
 const UpdateVariableDefinitions = require('./variables.js')
+const UpdatePresets = require('./presets.js')
 const UpgradeScripts = require('./upgrades.js')
 
 // endpoints whose state is read back from the TV on connect
@@ -26,6 +27,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		this.mute = undefined
 		this.picture_mute = undefined
 		this.pendingEnquiries = []
+		this.receiveBuffer = ''
 
 		await this.configUpdated(config)
 	}
@@ -43,6 +45,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		this.updateActions() // export actions
 		this.updateFeedbacks() // export feedbacks
 		this.updateVariableDefinitions() // export variable definitions
+		this.updatePresets() // export presets
 	}
 
 	async destroy() {
@@ -91,6 +94,10 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		UpdateVariableDefinitions(this)
 	}
 
+	updatePresets() {
+		UpdatePresets(this)
+	}
+
 	init_tcp() {
 		if (this.socket) {
 			this.socket.destroy()
@@ -99,6 +106,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 		this.updateStatus(InstanceStatus.Connecting)
 		this.pendingEnquiries = []
+		this.receiveBuffer = ''
 
 		const host = (this.config.host || '').trim()
 		const port = parseInt(this.config.port, 10)
@@ -136,7 +144,10 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 	}
 
 	receive(data) {
-		const commands = data.toString().split('\n')
+		// messages can be split across TCP reads, so keep the incomplete tail for the next read
+		this.receiveBuffer += data.toString('latin1')
+		const commands = this.receiveBuffer.split('\n')
+		this.receiveBuffer = commands.pop()
 		for (let cmd of commands) {
 			if (cmd.length > 0) {
 				const dataResponse = cmd
@@ -176,7 +187,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		switch (endpoint) {
 			case 'POWR':
 				this.power = parseInt(parameters)
-				this.setVariableValues({ power: this.power })
+				this.setVariableValues({ power: this.power, power_text: this.power ? 'On' : 'Off' })
 				this.checkFeedbacks('power')
 				break
 			case 'VOLU':
@@ -210,12 +221,15 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			}
 			case 'AMUT':
 				this.mute = parseInt(parameters)
-				this.setVariableValues({ mute: this.mute })
+				this.setVariableValues({ mute: this.mute, mute_text: this.mute ? 'Muted' : 'Unmuted' })
 				this.checkFeedbacks('mute')
 				break
 			case 'PMUT':
 				this.picture_mute = parseInt(parameters)
-				this.setVariableValues({ picture_mute: this.picture_mute })
+				this.setVariableValues({
+					picture_mute: this.picture_mute,
+					picture_mute_text: this.picture_mute ? 'Muted' : 'Unmuted',
+				})
 				this.checkFeedbacks('picture_mute')
 				break
 			default:
