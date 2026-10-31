@@ -99,7 +99,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 				type: 'number',
 				id: 'poll_interval',
 				label: 'Poll Interval (seconds, 0 to disable)',
-				tooltip: 'How often to re-read the TV state, to catch changes the TV does not report on its own',
+				tooltip:
+					'How often to re-read the TV state, to catch changes the TV does not report on its own. Not needed when Companion is the only Simple IP controller on a stable network; set to 0 to disable.',
 				width: 4,
 				default: DEFAULT_POLL_INTERVAL_S,
 				min: 0,
