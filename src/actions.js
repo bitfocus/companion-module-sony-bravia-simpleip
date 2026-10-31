@@ -113,7 +113,10 @@ module.exports = function (self) {
 						break
 				}
 
-				self.send(cmd)
+				// assume the TV took it, so a quick second toggle flips back; the re-read corrects any mismatch
+				if (self.send(cmd) && cmd.startsWith('*SCAMUT')) {
+					self.updateState('AMUT', cmd.substr(7))
+				}
 			},
 		},
 		set_input: {
@@ -145,7 +148,10 @@ module.exports = function (self) {
 					self.log('warn', 'Invalid input number: ' + action.options.input_number)
 					return
 				}
-				const inputType = INPUT_TYPES.find((type) => type.id === action.options.input_source)
+				// raw codes still work, for expressions written before ids were readable
+				const inputType = INPUT_TYPES.find(
+					(type) => type.id === action.options.input_source || type.code === action.options.input_source,
+				)
 				if (!inputType) {
 					self.log('warn', 'Invalid input source: ' + action.options.input_source)
 					return
@@ -202,7 +208,10 @@ module.exports = function (self) {
 				},
 			],
 			callback: async (action) => {
-				const key = REMOTE_KEYS.find((remoteKey) => remoteKey.id === action.options.remote_code)
+				// raw codes still work, for expressions written before ids were readable
+				const key = REMOTE_KEYS.find(
+					(remoteKey) => remoteKey.id === action.options.remote_code || remoteKey.code === action.options.remote_code,
+				)
 				if (!key) {
 					self.log('warn', 'Invalid remote key: ' + action.options.remote_code)
 					return
