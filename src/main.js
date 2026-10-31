@@ -2,10 +2,26 @@ const { InstanceBase, Regex, TCPHelper, InstanceStatus } = require('@companion-m
 const UpdateActions = require('./actions.js')
 const UpdateFeedbacks = require('./feedbacks.js')
 const UpdateVariableDefinitions = require('./variables.js')
+const UpdatePresets = require('./presets.js')
 const UpgradeScripts = require('./upgrades.js')
 
 // endpoints whose state is read back from the TV on connect
 const STATE_ENDPOINTS = ['POWR', 'VOLU', 'INPT', 'AMUT', 'PMUT']
+
+// the TV does not always send a notification after a command, so re-read what each command can change
+const REFRESH_AFTER = {
+	POWR: ['POWR'],
+	TPOW: ['POWR'],
+	VOLU: ['VOLU'],
+	AMUT: ['AMUT'],
+	PMUT: ['PMUT'],
+	TPMU: ['PMUT'],
+	INPT: ['INPT'],
+	IRCC: STATE_ENDPOINTS,
+}
+const REFRESH_DELAY_MS = 1000
+const DEFAULT_POLL_INTERVAL_S = 10
+const MAX_POLL_INTERVAL_S = 3600
 
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
@@ -25,7 +41,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		this.input = undefined
 		this.mute = undefined
 		this.picture_mute = undefined
-		this.pendingEnquiries = []
+		this.sentQueue = []
+		this.receiveBuffer = ''
 
 		await this.configUpdated(config)
 	}
@@ -43,9 +60,12 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		this.updateActions() // export actions
 		this.updateFeedbacks() // export feedbacks
 		this.updateVariableDefinitions() // export variable definitions
+		this.updatePresets() // export presets
 	}
 
 	async destroy() {
+		this.cancelRefresh()
+		this.stopPolling()
 		if (this.socket) {
 			this.socket.destroy()
 			delete this.socket
@@ -76,6 +96,17 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 				default: 20060,
 				regex: Regex.PORT,
 			},
+			{
+				type: 'number',
+				id: 'poll_interval',
+				label: 'Poll Interval (seconds, 0 to disable)',
+				tooltip:
+					'How often to re-read the TV state, to catch changes the TV does not report on its own. Not needed when Companion is the only Simple IP controller on a stable network; set to 0 to disable.',
+				width: 4,
+				default: DEFAULT_POLL_INTERVAL_S,
+				min: 0,
+				max: MAX_POLL_INTERVAL_S,
+			},
 		]
 	}
 
@@ -91,6 +122,10 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		UpdateVariableDefinitions(this)
 	}
 
+	updatePresets() {
+		UpdatePresets(this)
+	}
+
 	init_tcp() {
 		if (this.socket) {
 			this.socket.destroy()
@@ -98,7 +133,10 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 
 		this.updateStatus(InstanceStatus.Connecting)
-		this.pendingEnquiries = []
+		this.cancelRefresh()
+		this.stopPolling()
+		this.sentQueue = []
+		this.receiveBuffer = ''
 
 		const host = (this.config.host || '').trim()
 		const port = parseInt(this.config.port, 10)
@@ -111,6 +149,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			})
 
 			this.socket.on('connect', () => {
+				// anything sent before a drop will never be answered
+				this.sentQueue = []
 				this.queryState()
 			})
 
@@ -122,6 +162,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			this.socket.on('data', (data) => {
 				this.receive(data)
 			})
+
+			this.startPolling()
 		} else {
 			this.updateStatus(InstanceStatus.BadConfig)
 		}
@@ -130,13 +172,61 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 	// ask the TV for its current state; answers arrive as 'A' messages
 	queryState() {
 		for (const endpoint of STATE_ENDPOINTS) {
-			this.pendingEnquiries.push(endpoint)
 			this.send(`*SE${endpoint}################`)
 		}
 	}
 
+	// periodically re-read the state to catch changes the TV does not notify
+	startPolling() {
+		const configured = parseInt(this.config.poll_interval, 10)
+		const interval = Number.isInteger(configured) ? Math.min(configured, MAX_POLL_INTERVAL_S) : DEFAULT_POLL_INTERVAL_S
+		if (interval <= 0) return
+
+		this.pollTimer = setInterval(() => {
+			if (!this.socket?.isConnected) return
+			if (this.sentQueue.length > 0) {
+				// messages still unanswered after a whole poll interval will never be answered
+				this.log('debug', 'Unanswered messages before poll: ' + this.sentQueue.map((m) => m.endpoint).join(', '))
+				this.sentQueue = []
+			}
+			this.queryState()
+		}, interval * 1000)
+	}
+
+	stopPolling() {
+		clearInterval(this.pollTimer)
+		this.pollTimer = undefined
+	}
+
+	// re-read the given endpoints shortly after a command, batching commands sent close together
+	scheduleRefresh(endpoints) {
+		if (!endpoints) return
+		if (!this.refreshEndpoints) this.refreshEndpoints = new Set()
+		for (const endpoint of endpoints) this.refreshEndpoints.add(endpoint)
+
+		if (!this.refreshTimer) {
+			this.refreshTimer = setTimeout(() => {
+				const toRefresh = this.refreshEndpoints
+				this.refreshTimer = undefined
+				this.refreshEndpoints = undefined
+				for (const endpoint of toRefresh) {
+					this.send(`*SE${endpoint}################`)
+				}
+			}, REFRESH_DELAY_MS)
+		}
+	}
+
+	cancelRefresh() {
+		clearTimeout(this.refreshTimer)
+		this.refreshTimer = undefined
+		this.refreshEndpoints = undefined
+	}
+
 	receive(data) {
-		const commands = data.toString().split('\n')
+		// messages can be split across TCP reads, so keep the incomplete tail for the next read
+		this.receiveBuffer += data.toString('latin1')
+		const commands = this.receiveBuffer.split('\n')
+		this.receiveBuffer = commands.pop()
 		for (let cmd of commands) {
 			if (cmd.length > 0) {
 				const dataResponse = cmd
@@ -149,14 +239,20 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 				this.log('debug', 'response type: ' + resType + ' endpoint: ' + resEndpoint + ' parameters: ' + resParameters)
 
 				if (resType == 'A') {
-					// answers come back in order, so the first matching pending enquiry is this one
-					const enquiryIndex = this.pendingEnquiries.indexOf(resEndpoint)
-					const isEnquiryAnswer = enquiryIndex !== -1
-					if (isEnquiryAnswer) {
-						this.pendingEnquiries.splice(enquiryIndex, 1)
+					// answers come back in the order messages were sent, so match against the oldest outstanding one;
+					// an accepted command and an "off" answer look the same, so the message type decides
+					const sentIndex = this.sentQueue.findIndex((m) => m.endpoint === resEndpoint)
+					const sent = sentIndex === -1 ? undefined : this.sentQueue[sentIndex]
+					if (sentIndex !== -1) {
+						// anything older than the match was never answered
+						this.sentQueue.splice(0, sentIndex + 1)
 					}
+					const isEnquiryAnswer = sent?.type === 'E'
 
-					if (resParameters == 'FFFFFFFFFFFFFFFF') {
+					if (resParameters == 'FFFFFFFFFFFFFFFF' && isEnquiryAnswer) {
+						// in standby the TV refuses volume, input and mute enquiries
+						this.log('debug', 'TV could not report ' + resEndpoint + ' (it may be in standby)')
+					} else if (resParameters == 'FFFFFFFFFFFFFFFF') {
 						this.log('error', 'Error response received from TV for ' + resEndpoint)
 					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
 						this.log('debug', 'TV has no value for ' + resEndpoint)
@@ -164,6 +260,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 						this.updateState(resEndpoint, resParameters)
 					} else if (resParameters == '0000000000000000') {
 						this.log('info', 'Command processed successfully: ' + resEndpoint)
+						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
 					}
 				} else if (resType == 'N') {
 					this.updateState(resEndpoint, resParameters)
@@ -176,7 +273,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		switch (endpoint) {
 			case 'POWR':
 				this.power = parseInt(parameters)
-				this.setVariableValues({ power: this.power })
+				this.setVariableValues({ power: this.power, power_text: this.power ? 'On' : 'Off' })
 				this.checkFeedbacks('power')
 				break
 			case 'VOLU':
@@ -210,12 +307,15 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			}
 			case 'AMUT':
 				this.mute = parseInt(parameters)
-				this.setVariableValues({ mute: this.mute })
+				this.setVariableValues({ mute: this.mute, mute_text: this.mute ? 'Muted' : 'Unmuted' })
 				this.checkFeedbacks('mute')
 				break
 			case 'PMUT':
 				this.picture_mute = parseInt(parameters)
-				this.setVariableValues({ picture_mute: this.picture_mute })
+				this.setVariableValues({
+					picture_mute: this.picture_mute,
+					picture_mute_text: this.picture_mute ? 'Muted' : 'Unmuted',
+				})
 				this.checkFeedbacks('picture_mute')
 				break
 			default:
@@ -223,8 +323,9 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 	}
 
-	async send(cmd) {
-		if (cmd != '') {
+	// returns true when the message was written to the socket
+	send(cmd) {
+		if (typeof cmd === 'string' && cmd != '') {
 			/*
 			 * create a binary buffer pre-encoded 'latin1' (8bit no change bytes)
 			 * sending a string assumes 'utf8' encoding
@@ -236,10 +337,14 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 			if (this.socket !== undefined && this.socket.isConnected) {
 				this.socket.send(sendBuf)
+				// remember what was sent so the TV's answer can be matched to it
+				this.sentQueue.push({ type: cmd.substr(2, 1), endpoint: cmd.substr(3, 4) })
+				return true
 			} else {
 				this.log('debug', 'Socket not connected')
 			}
 		}
+		return false
 	}
 }
 
