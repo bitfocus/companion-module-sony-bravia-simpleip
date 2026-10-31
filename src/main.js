@@ -8,6 +8,19 @@ const UpgradeScripts = require('./upgrades.js')
 // endpoints whose state is read back from the TV on connect
 const STATE_ENDPOINTS = ['POWR', 'VOLU', 'INPT', 'AMUT', 'PMUT']
 
+// the TV does not always send a notification after a command, so re-read what each command can change
+const REFRESH_AFTER = {
+	POWR: ['POWR'],
+	TPOW: ['POWR'],
+	VOLU: ['VOLU'],
+	AMUT: ['AMUT'],
+	PMUT: ['PMUT'],
+	TPMU: ['PMUT'],
+	INPT: ['INPT'],
+	IRCC: STATE_ENDPOINTS,
+}
+const REFRESH_DELAY_MS = 1000
+
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
 
@@ -49,6 +62,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 	}
 
 	async destroy() {
+		this.cancelRefresh()
 		if (this.socket) {
 			this.socket.destroy()
 			delete this.socket
@@ -105,6 +119,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 
 		this.updateStatus(InstanceStatus.Connecting)
+		this.cancelRefresh()
 		this.pendingEnquiries = []
 		this.receiveBuffer = ''
 
@@ -143,6 +158,31 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 		}
 	}
 
+	// re-read the given endpoints shortly after a command, batching commands sent close together
+	scheduleRefresh(endpoints) {
+		if (!endpoints) return
+		if (!this.refreshEndpoints) this.refreshEndpoints = new Set()
+		for (const endpoint of endpoints) this.refreshEndpoints.add(endpoint)
+
+		if (!this.refreshTimer) {
+			this.refreshTimer = setTimeout(() => {
+				const toRefresh = this.refreshEndpoints
+				this.refreshTimer = undefined
+				this.refreshEndpoints = undefined
+				for (const endpoint of toRefresh) {
+					this.pendingEnquiries.push(endpoint)
+					this.send(`*SE${endpoint}################`)
+				}
+			}, REFRESH_DELAY_MS)
+		}
+	}
+
+	cancelRefresh() {
+		clearTimeout(this.refreshTimer)
+		this.refreshTimer = undefined
+		this.refreshEndpoints = undefined
+	}
+
 	receive(data) {
 		// messages can be split across TCP reads, so keep the incomplete tail for the next read
 		this.receiveBuffer += data.toString('latin1')
@@ -178,6 +218,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 						this.updateState(resEndpoint, resParameters)
 					} else if (resParameters == '0000000000000000') {
 						this.log('info', 'Command processed successfully: ' + resEndpoint)
+						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
 					}
 				} else if (resType == 'N') {
 					this.updateState(resEndpoint, resParameters)
