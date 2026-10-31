@@ -19,8 +19,8 @@ const NAVIGATION_KEYS = [
 	{ key: 'display', text: 'DISPLAY' },
 ]
 
-function style(text, size = '18') {
-	return { text, size, color: WHITE, bgcolor: BLACK }
+function style(text) {
+	return { text, size: 'auto', color: WHITE, bgcolor: BLACK }
 }
 
 function press(actionId, options) {
@@ -56,14 +56,14 @@ module.exports = function (self) {
 		volume_up: {
 			type: 'simple',
 			name: 'Volume Up',
-			style: style('VOL +', '24'),
+			style: style('VOL +'),
 			steps: press('remote_control', { remote_code: 'volume_up' }),
 			feedbacks: [],
 		},
 		volume_down: {
 			type: 'simple',
 			name: 'Volume Down',
-			style: style('VOL -', '24'),
+			style: style('VOL -'),
 			steps: press('remote_control', { remote_code: 'volume_down' }),
 			feedbacks: [],
 		},
@@ -77,7 +77,7 @@ module.exports = function (self) {
 		mute_toggle: {
 			type: 'simple',
 			name: 'Mute Toggle',
-			style: style(`MUTE\\n$(${label}:mute_text)`, '14'),
+			style: style(`MUTE\\n$(${label}:mute_text)`),
 			steps: press('set_mute', { mute_state: 'toggle' }),
 			feedbacks: [{ feedbackId: 'mute', options: { mute_state: '1' }, style: { bgcolor: RED } }],
 		},
@@ -103,21 +103,21 @@ module.exports = function (self) {
 		picture_mute_toggle: {
 			type: 'simple',
 			name: 'Picture Mute Toggle',
-			style: style(`PICTURE\\n$(${label}:picture_mute_text)`, '14'),
+			style: style(`PICTURE\\n$(${label}:picture_mute_text)`),
 			steps: press('set_picture_mute', { picture_mute_state: 'toggle' }),
 			feedbacks: [{ feedbackId: 'picture_mute', options: { picture_mute_state: '1' }, style: { bgcolor: RED } }],
 		},
 		picture_mute_on: {
 			type: 'simple',
 			name: 'Picture Mute On',
-			style: style('PICTURE\\nOFF', '14'),
+			style: style('PICTURE\\nOFF'),
 			steps: press('set_picture_mute', { picture_mute_state: 'on' }),
 			feedbacks: [{ feedbackId: 'picture_mute', options: { picture_mute_state: '1' }, style: { bgcolor: RED } }],
 		},
 		picture_mute_off: {
 			type: 'simple',
 			name: 'Picture Mute Off',
-			style: style('PICTURE\\nON', '14'),
+			style: style('PICTURE\\nON'),
 			steps: press('set_picture_mute', { picture_mute_state: 'off' }),
 			feedbacks: [{ feedbackId: 'picture_mute', options: { picture_mute_state: '0' }, style: { bgcolor: GREEN } }],
 		},
@@ -127,7 +127,7 @@ module.exports = function (self) {
 		presets[`nav_${key}`] = {
 			type: 'simple',
 			name: `Navigation ${text}`,
-			style: style(text, text.length > 4 ? '14' : '24'),
+			style: style(text),
 			steps: press('remote_control', { remote_code: key }),
 			feedbacks: [],
 		}

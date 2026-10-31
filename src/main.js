@@ -167,7 +167,10 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 						this.pendingEnquiries.splice(enquiryIndex, 1)
 					}
 
-					if (resParameters == 'FFFFFFFFFFFFFFFF') {
+					if (resParameters == 'FFFFFFFFFFFFFFFF' && isEnquiryAnswer) {
+						// in standby the TV refuses volume, input and mute enquiries
+						this.log('debug', 'TV could not report ' + resEndpoint + ' (it may be in standby)')
+					} else if (resParameters == 'FFFFFFFFFFFFFFFF') {
 						this.log('error', 'Error response received from TV for ' + resEndpoint)
 					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
 						this.log('debug', 'TV has no value for ' + resEndpoint)
