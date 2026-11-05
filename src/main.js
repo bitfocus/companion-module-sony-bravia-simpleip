@@ -22,6 +22,8 @@ const REFRESH_AFTER = {
 const REFRESH_DELAY_MS = 1000
 const DEFAULT_POLL_INTERVAL_S = 10
 const MAX_POLL_INTERVAL_S = 3600
+// a message with no answer after this long will never get one
+const STALE_MESSAGE_MS = 5000
 
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
@@ -184,10 +186,12 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 		this.pollTimer = setInterval(() => {
 			if (!this.socket?.isConnected) return
-			if (this.sentQueue.length > 0) {
-				// messages still unanswered after a whole poll interval will never be answered
-				this.log('debug', 'Unanswered messages before poll: ' + this.sentQueue.map((m) => m.endpoint).join(', '))
-				this.sentQueue = []
+			// drop only messages that have waited too long, so a command sent just before the poll keeps its place
+			const cutoff = Date.now() - STALE_MESSAGE_MS
+			const stale = this.sentQueue.filter((m) => m.sentAt < cutoff)
+			if (stale.length > 0) {
+				this.log('debug', 'Unanswered messages before poll: ' + stale.map((m) => m.endpoint).join(', '))
+				this.sentQueue = this.sentQueue.filter((m) => m.sentAt >= cutoff)
 			}
 			this.queryState()
 		}, interval * 1000)
@@ -252,20 +256,53 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 					if (resParameters == 'FFFFFFFFFFFFFFFF' && isEnquiryAnswer) {
 						// in standby the TV refuses volume, input and mute enquiries
 						this.log('debug', 'TV could not report ' + resEndpoint + ' (it may be in standby)')
+					} else if (resParameters == 'FFFFFFFFFFFFFFFF' && sent) {
+						// in standby the TV refuses mute, volume and input changes, so that isn't worth an error
+						if (this.power === 0) {
+							this.log('debug', 'TV refused ' + resEndpoint + ' (it is in standby)')
+						} else {
+							this.log('error', 'Error response received from TV for ' + resEndpoint)
+						}
+						if ('previousMute' in sent) this.restoreMute(sent.previousMute)
+						// read back what the TV really has; power too, in case the module thought it was on
+						this.scheduleRefresh([...(REFRESH_AFTER[resEndpoint] || []), 'POWR'])
 					} else if (resParameters == 'FFFFFFFFFFFFFFFF') {
-						this.log('error', 'Error response received from TV for ' + resEndpoint)
+						// no matching message, e.g. a reply that came back after its entry was dropped as stale
+						this.log('debug', 'Unmatched error response for ' + resEndpoint)
 					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
 						this.log('debug', 'TV has no value for ' + resEndpoint)
 					} else if (isEnquiryAnswer) {
 						this.updateState(resEndpoint, resParameters)
 					} else if (resParameters == '0000000000000000') {
 						this.log('info', 'Command processed successfully: ' + resEndpoint)
+						// show the new power state as soon as the TV takes a power command, instead of waiting for
+						// the re-read, so mute buttons pressed straight after Power On already treat the TV as on
+						if (sent?.endpoint === 'POWR' && /^0{15}[01]$/.test(sent.param)) {
+							this.updateState('POWR', sent.param)
+						} else if (sent?.endpoint === 'TPOW' && this.power !== undefined) {
+							this.updateState('POWR', this.power ? '0000000000000000' : '0000000000000001')
+						}
 						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
 					}
 				} else if (resType == 'N') {
 					this.updateState(resEndpoint, resParameters)
 				}
 			}
+		}
+	}
+
+	// undo an instant mute update the TV rejected. Mute commands still waiting for a reply were
+	// based on the rejected value, so they now restore to the same value
+	restoreMute(previous) {
+		for (const m of this.sentQueue) {
+			if ('previousMute' in m) m.previousMute = previous
+		}
+		if (previous === undefined) {
+			this.mute = undefined
+			this.setVariableValues({ mute: undefined, mute_text: undefined })
+			this.checkFeedbacks('mute')
+		} else {
+			this.updateState('AMUT', String(previous).padStart(16, '0'))
 		}
 	}
 
@@ -338,7 +375,12 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			if (this.socket !== undefined && this.socket.isConnected) {
 				this.socket.send(sendBuf)
 				// remember what was sent so the TV's answer can be matched to it
-				this.sentQueue.push({ type: cmd.substr(2, 1), endpoint: cmd.substr(3, 4) })
+				this.sentQueue.push({
+					type: cmd.substr(2, 1),
+					endpoint: cmd.substr(3, 4),
+					param: cmd.substr(7, 16),
+					sentAt: Date.now(),
+				})
 				return true
 			} else {
 				this.log('debug', 'Socket not connected')

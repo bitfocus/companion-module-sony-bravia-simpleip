@@ -113,8 +113,11 @@ module.exports = function (self) {
 						break
 				}
 
-				// assume the TV took it, so a quick second toggle flips back; the re-read corrects any mismatch
-				if (self.send(cmd) && cmd.startsWith('*SCAMUT')) {
+				// assume the TV took it, so a quick second toggle flips back. Skip it when the TV is known to be
+				// in standby, where it refuses mute changes; if the TV rejects the command, the update is undone
+				const previousMute = self.mute
+				if (self.send(cmd) && cmd.startsWith('*SCAMUT') && self.power !== 0) {
+					self.sentQueue[self.sentQueue.length - 1].previousMute = previousMute
 					self.updateState('AMUT', cmd.substr(7))
 				}
 			},
