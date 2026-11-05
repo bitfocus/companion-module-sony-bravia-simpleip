@@ -256,10 +256,19 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 					if (resParameters == 'FFFFFFFFFFFFFFFF' && isEnquiryAnswer) {
 						// in standby the TV refuses volume, input and mute enquiries
 						this.log('debug', 'TV could not report ' + resEndpoint + ' (it may be in standby)')
+					} else if (resParameters == 'FFFFFFFFFFFFFFFF' && sent) {
+						// in standby the TV refuses mute, volume and input changes, so that isn't worth an error
+						if (this.power === 0) {
+							this.log('debug', 'TV refused ' + resEndpoint + ' (it is in standby)')
+						} else {
+							this.log('error', 'Error response received from TV for ' + resEndpoint)
+						}
+						if ('previousMute' in sent) this.restoreMute(sent.previousMute)
+						// read back what the TV really has; power too, in case the module thought it was on
+						this.scheduleRefresh([...(REFRESH_AFTER[resEndpoint] || []), 'POWR'])
 					} else if (resParameters == 'FFFFFFFFFFFFFFFF') {
-						this.log('error', 'Error response received from TV for ' + resEndpoint)
-						// the module may already show the state it asked for, so read back what the TV really has
-						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
+						// no matching message, e.g. a reply that came back after its entry was dropped as stale
+						this.log('debug', 'Unmatched error response for ' + resEndpoint)
 					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
 						this.log('debug', 'TV has no value for ' + resEndpoint)
 					} else if (isEnquiryAnswer) {
@@ -272,6 +281,21 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 					this.updateState(resEndpoint, resParameters)
 				}
 			}
+		}
+	}
+
+	// undo an instant mute update the TV rejected. Mute commands still waiting for a reply were
+	// based on the rejected value, so they now restore to the same value
+	restoreMute(previous) {
+		for (const m of this.sentQueue) {
+			if ('previousMute' in m) m.previousMute = previous
+		}
+		if (previous === undefined) {
+			this.mute = undefined
+			this.setVariableValues({ mute: undefined, mute_text: undefined })
+			this.checkFeedbacks('mute')
+		} else {
+			this.updateState('AMUT', String(previous).padStart(16, '0'))
 		}
 	}
 
