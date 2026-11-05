@@ -113,8 +113,9 @@ module.exports = function (self) {
 						break
 				}
 
-				// assume the TV took it, so a quick second toggle flips back; the re-read corrects any mismatch
-				if (self.send(cmd) && cmd.startsWith('*SCAMUT')) {
+				// assume the TV took it, so a quick second toggle flips back; the re-read corrects any mismatch.
+				// Only while the TV is on: in standby it refuses mute changes and won't report mute either
+				if (self.send(cmd) && cmd.startsWith('*SCAMUT') && self.power === 1) {
 					self.updateState('AMUT', cmd.substr(7))
 				}
 			},

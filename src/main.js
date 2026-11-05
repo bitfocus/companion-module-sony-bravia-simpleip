@@ -22,6 +22,8 @@ const REFRESH_AFTER = {
 const REFRESH_DELAY_MS = 1000
 const DEFAULT_POLL_INTERVAL_S = 10
 const MAX_POLL_INTERVAL_S = 3600
+// a message with no answer after this long will never get one
+const STALE_MESSAGE_MS = 5000
 
 const REGEX_IP_OR_HOST =
 	'/^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3})$|^((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]).)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9]))$/'
@@ -184,10 +186,12 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 
 		this.pollTimer = setInterval(() => {
 			if (!this.socket?.isConnected) return
-			if (this.sentQueue.length > 0) {
-				// messages still unanswered after a whole poll interval will never be answered
-				this.log('debug', 'Unanswered messages before poll: ' + this.sentQueue.map((m) => m.endpoint).join(', '))
-				this.sentQueue = []
+			// drop only messages that have waited too long, so a command sent just before the poll keeps its place
+			const cutoff = Date.now() - STALE_MESSAGE_MS
+			const stale = this.sentQueue.filter((m) => m.sentAt < cutoff)
+			if (stale.length > 0) {
+				this.log('debug', 'Unanswered messages before poll: ' + stale.map((m) => m.endpoint).join(', '))
+				this.sentQueue = this.sentQueue.filter((m) => m.sentAt >= cutoff)
 			}
 			this.queryState()
 		}, interval * 1000)
@@ -254,6 +258,8 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 						this.log('debug', 'TV could not report ' + resEndpoint + ' (it may be in standby)')
 					} else if (resParameters == 'FFFFFFFFFFFFFFFF') {
 						this.log('error', 'Error response received from TV for ' + resEndpoint)
+						// the module may already show the state it asked for, so read back what the TV really has
+						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
 					} else if (resParameters == 'NNNNNNNNNNNNNNNN') {
 						this.log('debug', 'TV has no value for ' + resEndpoint)
 					} else if (isEnquiryAnswer) {
@@ -338,7 +344,7 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			if (this.socket !== undefined && this.socket.isConnected) {
 				this.socket.send(sendBuf)
 				// remember what was sent so the TV's answer can be matched to it
-				this.sentQueue.push({ type: cmd.substr(2, 1), endpoint: cmd.substr(3, 4) })
+				this.sentQueue.push({ type: cmd.substr(2, 1), endpoint: cmd.substr(3, 4), sentAt: Date.now() })
 				return true
 			} else {
 				this.log('debug', 'Socket not connected')
