@@ -275,6 +275,13 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 						this.updateState(resEndpoint, resParameters)
 					} else if (resParameters == '0000000000000000') {
 						this.log('info', 'Command processed successfully: ' + resEndpoint)
+						// show the new power state as soon as the TV takes a power command, instead of waiting for
+						// the re-read, so mute buttons pressed straight after Power On already treat the TV as on
+						if (sent?.endpoint === 'POWR' && /^0{15}[01]$/.test(sent.param)) {
+							this.updateState('POWR', sent.param)
+						} else if (sent?.endpoint === 'TPOW' && this.power !== undefined) {
+							this.updateState('POWR', this.power ? '0000000000000000' : '0000000000000001')
+						}
 						this.scheduleRefresh(REFRESH_AFTER[resEndpoint])
 					}
 				} else if (resType == 'N') {
@@ -368,7 +375,12 @@ module.exports = class BraviaSimpleIPInstance extends InstanceBase {
 			if (this.socket !== undefined && this.socket.isConnected) {
 				this.socket.send(sendBuf)
 				// remember what was sent so the TV's answer can be matched to it
-				this.sentQueue.push({ type: cmd.substr(2, 1), endpoint: cmd.substr(3, 4), sentAt: Date.now() })
+				this.sentQueue.push({
+					type: cmd.substr(2, 1),
+					endpoint: cmd.substr(3, 4),
+					param: cmd.substr(7, 16),
+					sentAt: Date.now(),
+				})
 				return true
 			} else {
 				this.log('debug', 'Socket not connected')

@@ -6,7 +6,8 @@ This is a Companion module for controlling Sony Bravia TVs using the Simple IP p
 
 - Fix Set Mute State showing Muted while the TV is in standby, including when the module missed the TV turning off
 - Fix a button pressed just before a poll occasionally showing the wrong power, volume or mute state
-- Re-read the TV state when it rejects a command, and log mute changes refused in standby at debug level instead of as errors
+- Show the new power state as soon as the TV accepts a power command, so Mute Toggle works straight after Power On
+- Re-read the TV state when it rejects a command, and log commands refused in standby at debug level instead of as errors
 
 ## 1.3.0
 
